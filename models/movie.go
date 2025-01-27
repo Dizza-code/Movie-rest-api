@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"example.com/movies-api/db"
 	"go.mongodb.org/mongo-driver/bson"
@@ -11,15 +12,19 @@ import (
 )
 
 type Movie struct {
-	ID     primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
-	Movie  string             `json:"movie"`
-	Actors []string           `json:"actors"`
-	UserID primitive.ObjectID `json:"user_id" bson:"user_id"`
+	ID        primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
+	Movie     string             `json:"movie"`
+	Actors    []string           `json:"actors"`
+	UserID    primitive.ObjectID `json:"user_id" bson:"user_id"`
+	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
 }
 
 // inserting a movie into the collection
 func InsertMovie(movie Movie) error {
 	collection := db.MongoClient.Database(db.Db).Collection(db.CollName)
+	// set the creation time
+	movie.CreatedAt = time.Now()
+
 	//passing the context and the movie object
 	inserted, err := collection.InsertOne(context.TODO(), movie)
 	if err != nil {
@@ -161,4 +166,45 @@ func DeleteAll() error {
 	}
 	fmt.Println("Records deleted: ", delResult.DeletedCount)
 	return err
+}
+
+func GetMoviesWithUserEmail() ([]bson.M, error) {
+	collection := db.MongoClient.Database(db.Db).Collection(db.CollName)
+	//define the aggregation pipeline
+	pipeline := bson.A{
+		bson.M{
+			"$lookup": bson.M{
+				"from":         "users",   //the collection to join with
+				"localField":   "user_id", // field from the movies collection
+				"foreignField": "_id",     //field from the users collection
+				"as":           "user",    //output array field
+			},
+		},
+		bson.M{
+			"$unwind": "$user", // Unwind the user array (since lookup returns an array)
+		},
+		bson.M{
+			"$project": bson.M{
+				"movie":      1,
+				"actors":     1,
+				"created_at": 1,
+				"user_email": "$user.email", // include the user's email
+			},
+		},
+	}
+
+	//Execute the aggregation pipeline
+	cursor, err := collection.Aggregate(context.TODO(), pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(context.TODO())
+
+	//Decode the results into a slice of bson.M
+	var movies []bson.M
+	if err = cursor.All(context.TODO(), &movies); err != nil {
+		return nil, err
+	}
+
+	return movies, nil
 }

@@ -17,6 +17,7 @@ func RegisterRoutes(server *gin.Engine) {
 	movies.GET("/all/:name", controllers.FindAllMoviesByName)
 	// movies.POST("/multiple", controllers.InsertMultipleMovies)
 	movies.GET("/:id", controllers.GetMovieByID)
+	movies.GET("/download-csv", controllers.DownloadMovieCSV) // Add this line
 
 	authenticated := server.Group("/")
 	authenticated.Use(middleware.Authenticate)
